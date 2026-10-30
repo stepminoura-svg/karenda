@@ -1,0 +1,1 @@
+module.exports={testDir:'./tests/ui',timeout:45000,workers:1,use:{browserName:'chromium',launchOptions:{executablePath:'/usr/bin/chromium',args:['--no-sandbox']},viewport:{width:1440,height:1000}},reporter:'list'};

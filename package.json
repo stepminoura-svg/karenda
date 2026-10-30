@@ -1,0 +1,39 @@
+{
+  "name": "karenda",
+  "version": "0.1.0",
+  "private": true,
+  "description": "受験校カレンダー・ツクール Windows デスクトップ版",
+  "author": "Karenda",
+  "main": "app/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist:win": "electron-builder --win zip --x64",
+    "check": "node --check app/main.cjs && node --check app/preload.cjs && node --check app/renderer.js",
+    "test:ui": "playwright test",
+    "test:desktop": "node tests/desktop.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "jp.karenda.desktop",
+    "productName": "Karenda",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app/**/*",
+      "data/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "zip",
+      "signAndEditExecutable": false
+    },
+    "artifactName": "Karenda-${version}-Windows-x64.${ext}",
+    "compression": "normal"
+  }
+}

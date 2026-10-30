@@ -1,0 +1,23 @@
+const {test,expect}=require('@playwright/test');const http=require('node:http');const fs=require('node:fs');const path=require('node:path');
+let server,url;
+test.beforeAll(async()=>{server=http.createServer((req,res)=>{const p=req.url==='/'?'index.html':req.url.slice(1);if(!['index.html','renderer.js','core.cjs','style.css'].includes(p)){res.writeHead(404);return res.end();}res.setHeader('Content-Type',p.endsWith('css')?'text/css':p.endsWith('html')?'text/html':'text/javascript');res.end(fs.readFileSync(path.resolve('app',p)));});await new Promise(r=>server.listen(0,'127.0.0.1',r));url=`http://127.0.0.1:${server.address().port}`;});
+test.afterAll(()=>server.close());
+test('検索→登録→カレンダー→生徒切替→履歴復元',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript({content:`const catalog=${JSON.stringify(require('../../data/catalog.json'))}; let state=null;window.desktop={catalog:async()=>catalog,load:async()=>state,save:async(s)=>{state=structuredClone(s)},backup:async()=>true,restore:async()=>null,pdf:async()=>true,print:async()=>true};`});
+ await page.goto(url);await expect(page.locator('h1')).toContainText('新しい生徒');
+ await page.locator('nav [data-page="search"]').click();await page.locator('#search-q').fill('早稲田');await expect(page.locator('tbody tr').first()).toContainText('早稲田');
+ await page.locator('[data-add]').first().click();await expect(page.locator('#modal')).toBeVisible();await page.locator('#modal [name="exam"]').fill('2/3');await page.locator('#modal-form button[type="submit"]').click();await expect(page.locator('#modal')).not.toBeVisible();await expect(page.locator('[data-add]').first()).toHaveText('追加済み');
+ await page.locator('nav [data-page="plans"]').click();await expect(page.locator('tbody tr')).toHaveCount(1);await page.locator('#snapshot').click();
+ await page.locator('nav [data-page="calendar"]').click();await expect(page.locator('.event.exam')).toHaveCount(1);await page.locator('[data-mode="list"]').click();await expect(page.locator('.timeline-row')).toHaveCount(4);
+ await page.locator('[data-mode="matrix"]').click();await expect(page.locator('tbody tr')).toHaveCount(1);
+ await page.locator('nav [data-page="plans"]').click();await page.locator('[data-edit]').first().click();await page.locator('[name="exam"]').fill('2/30');await page.locator('#modal-form button[type="submit"]').click();await expect(page.locator('#modal')).toBeVisible();await page.locator('[name="exam"]').fill('2/20');await page.locator('#modal-form button[type="submit"]').click();
+ await page.locator('nav [data-page="settings"]').click();await page.locator('[data-history]').click();await page.locator('#modal-form .primary').click();
+ await page.locator('#new-student').click();await page.locator('#modal [name="name"]').fill('別の生徒');await page.locator('#modal-form .primary').click();
+ await page.locator('nav [data-page="plans"]').click();await expect(page.locator('tbody tr')).toHaveCount(0);
+ await page.locator('#student-select').selectOption({label:'新しい生徒'});await expect(page.locator('tbody tr')).toHaveCount(1);
+ await page.locator('nav [data-page="eiken"]').click();await page.locator('#e-grade').selectOption('2級');await page.locator('#e-passed').selectOption('合格');await page.locator('#e-total').fill('2300');await page.locator('#e-since').fill('2026-06-01');await page.locator('#evaluate').click();await expect(page.locator('tbody')).toContainText('条件一致');
+ await page.locator('nav [data-page="campuses"]').click();await page.locator('#campus-q').fill('早稲田');await expect(page.locator('.campus-grid')).toContainText('早稲田');
+ await page.locator('nav [data-page="dashboard"]').click();await page.screenshot({path:'docs/dashboard.png',fullPage:true});
+ expect(errors).toEqual([]);
+});
