@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');const http=require('node:http');const fs=require('node:fs');const path=require('node:path');
 let server,url;
-test.beforeAll(async()=>{server=http.createServer((req,res)=>{const p=req.url==='/'?'index.html':req.url.slice(1);if(!['index.html','renderer.js','core.cjs','style.css'].includes(p)){res.writeHead(404);return res.end();}res.setHeader('Content-Type',p.endsWith('css')?'text/css':p.endsWith('html')?'text/html':'text/javascript');res.end(fs.readFileSync(path.resolve('app',p)));});await new Promise(r=>server.listen(0,'127.0.0.1',r));url=`http://127.0.0.1:${server.address().port}`;});
+test.beforeAll(async()=>{server=http.createServer((req,res)=>{const p=req.url==='/'?'index.html':req.url.slice(1);if(!['index.html','renderer.js','core.cjs','sheet-core.cjs','sheet-ui.js','style.css'].includes(p)){res.writeHead(404);return res.end();}res.setHeader('Content-Type',p.endsWith('css')?'text/css':p.endsWith('html')?'text/html':'text/javascript');res.end(fs.readFileSync(path.resolve('app',p)));});await new Promise(r=>server.listen(0,'127.0.0.1',r));url=`http://127.0.0.1:${server.address().port}`;});
 test.afterAll(()=>server.close());
 test('検索→登録→カレンダー→生徒切替→履歴復元',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -9,7 +9,7 @@ test('検索→登録→カレンダー→生徒切替→履歴復元',async({pa
  await page.locator('nav [data-page="search"]').click();await page.locator('#search-q').fill('早稲田');await expect(page.locator('tbody tr').first()).toContainText('早稲田');
  await page.locator('[data-add]').first().click();await expect(page.locator('#modal')).toBeVisible();await page.locator('#modal [name="exam"]').fill('2/3');await page.locator('#modal-form button[type="submit"]').click();await expect(page.locator('#modal')).not.toBeVisible();await expect(page.locator('[data-add]').first()).toHaveText('追加済み');
  await page.locator('nav [data-page="plans"]').click();await expect(page.locator('tbody tr')).toHaveCount(1);await page.locator('#snapshot').click();
- await page.locator('nav [data-page="calendar"]').click();await expect(page.locator('.event.exam')).toHaveCount(1);await page.locator('[data-mode="list"]').click();await expect(page.locator('.timeline-row')).toHaveCount(4);
+ await page.locator('nav [data-page="monthly"]').click();await expect(page.locator('.event.exam')).toHaveCount(1);await page.locator('[data-mode="list"]').click();await expect(page.locator('.timeline-row')).toHaveCount(4);
  await page.locator('[data-mode="matrix"]').click();await expect(page.locator('tbody tr')).toHaveCount(1);
  await page.locator('nav [data-page="plans"]').click();await page.locator('[data-edit]').first().click();await page.locator('[name="exam"]').fill('2/30');await page.locator('#modal-form button[type="submit"]').click();await expect(page.locator('#modal')).toBeVisible();await page.locator('[name="exam"]').fill('2/20');await page.locator('#modal-form button[type="submit"]').click();
  await page.locator('nav [data-page="settings"]').click();await page.locator('[data-history]').click();await page.locator('#modal-form .primary').click();
@@ -20,4 +20,52 @@ test('検索→登録→カレンダー→生徒切替→履歴復元',async({pa
  await page.locator('nav [data-page="campuses"]').click();await page.locator('#campus-q').fill('早稲田');await expect(page.locator('.campus-grid')).toContainText('早稲田');
  await page.locator('nav [data-page="dashboard"]').click();await page.screenshot({path:'docs/dashboard.png',fullPage:true});
  expect(errors).toEqual([]);
+});
+
+test('入力1～3と両カレンダーの往復、備考15列、見出し、直接編集、履歴、印刷',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const initial={version:1,year:2027,active:'old',students:[{id:'old',name:'既存生徒',number:'101',plans:[{id:'original',university:'テスト大学',faculty:'工',department:'情報',method:'一般',exam:'1/16',result:'2/15',enrollment:'2/20',application:'1/10',rank:'A',priority:'3',custom1:'数学',custom2:'200',custom3:'資格',note:'元の備考'}],history:[]},{id:'other',name:'別の生徒',number:'102',plans:[],history:[]}]};
+ await page.addInitScript({content:`const cat=${JSON.stringify(require('../../data/catalog.json'))};let saved=${JSON.stringify(initial)};window.testSaved=saved;window.desktop={catalog:async()=>cat,load:async()=>structuredClone(saved),save:async s=>{Core.validateState(s);SheetCore.validateExtension(s);saved=structuredClone(s);window.testSaved=saved;return true},pdf:async()=>{window.testPrint=document.querySelector('#print-output').innerHTML;return true},print:async()=>true,backup:async()=>true,restore:async()=>null};`});
+ await page.goto(url);await expect(page.locator('h1')).toContainText('既存生徒');await expect(page.locator('nav [data-page="route"]')).toHaveCount(0);
+ await page.locator('nav [data-page="calendar2"]').click();await expect(page.locator('[data-plan-field="custom1"]')).toHaveValue('数学');
+ await page.locator('#sheet-split').click();await expect(page.locator('[data-plan-field="note0"]')).toHaveValue('元の備考');
+ await page.locator('[data-note-header="14"]').fill('会場');await page.locator('[data-note-header="14"]').dispatchEvent('change');
+ await page.locator('[data-plan-field="note14"]').fill('横浜会場');await page.locator('[data-plan-field="note14"]').dispatchEvent('change');
+ await page.locator('[data-remark="first"]').fill('公開備考1');await page.locator('[data-remark="first"]').dispatchEvent('change');
+ await page.locator('[data-remark="second"]').fill('公開備考2');await page.locator('[data-remark="second"]').dispatchEvent('change');
+ await page.locator('[data-remark="private"]').fill('非公開メモ');await page.locator('[data-remark="private"]').dispatchEvent('change');
+ await page.locator('#sheet-columns').click();await page.locator('[name="label-custom1"]').fill('科目');await page.locator('[name="visible-custom1"]').check();await page.locator('#modal-form .primary').click();
+ await page.locator('#sheet-save-history').click();
+ await page.locator('#sheet-to-input').click();await page.locator('#modal-form .primary').click();await expect(page.locator('h1')).toHaveText('入力1');
+ await expect(page.locator('.input-grid:not(.special-grid) tbody tr')).toHaveCount(72);
+ await expect(page.locator('[data-slot="1:2027-01-16:2"][data-draft-field="university"]')).toHaveValue('テスト大学');
+ await page.locator('[data-slot="1:2027-01-20:2"][data-draft-field="university"]').fill('手入力大学');await page.locator('[data-slot="1:2027-01-20:2"][data-draft-field="university"]').dispatchEvent('change');
+ await page.locator('[data-slot="1:2027-01-20:2"][data-draft-field="result"]').fill('2/1');await page.locator('[data-slot="1:2027-01-20:2"][data-draft-field="result"]').dispatchEvent('change');
+ await page.locator('[data-entry-slot="1:2027-02-03:0"]').click();await page.locator('#entry-query').fill('拓殖');const option=await page.locator('#entry-catalog option:not([disabled])').first().getAttribute('value');await page.locator('#entry-catalog').selectOption(option);await expect(page.locator('#modal [name="result"]')).not.toHaveValue('');await page.locator('#modal-form .primary').click();
+ expect(await page.evaluate(()=>window.testSaved.students[0].plans.length)).toBe(1);
+ await page.locator('nav [data-page="input2"]').click();await page.locator('[data-entry-slot="2:early:0"]').click();await page.locator('#entry-date').fill('2026-12-20');await page.locator('#entry-date').dispatchEvent('change');const early=await page.locator('#entry-catalog option:not([disabled])').first().getAttribute('value');await page.locator('#entry-catalog').selectOption(early);await page.locator('#modal-form .primary').click();
+ await page.locator('nav [data-page="input3"]').click();await page.locator('[data-slot="3:free:0"][data-draft-field="exam"]').fill('11/1');await page.locator('[data-slot="3:free:0"][data-draft-field="exam"]').dispatchEvent('change');await page.locator('[data-slot="3:free:0"][data-draft-field="university"]').fill('自由大学');await page.locator('[data-slot="3:free:0"][data-draft-field="university"]').dispatchEvent('change');
+ await page.locator('#input-apply').click();await page.locator('#input-target').selectOption('calendar2');await page.locator('#modal-form .primary').click();await expect(page.locator('h1')).toHaveText('カレンダー2');await expect(page.locator('[data-sheet-row]')).toHaveCount(5);
+ await expect(page.locator('[data-sheet-row="original"] [data-plan-field="note14"]')).toHaveValue('横浜会場');await expect(page.locator('[data-note-header="14"]')).toHaveValue('会場');
+ await page.locator('[data-sheet-row="original"] [data-plan-field="priority"]').fill('1');await page.locator('[data-sheet-row="original"] [data-plan-field="priority"]').dispatchEvent('change');
+ await page.locator('#sheet-split').click();await expect(page.locator('[data-sheet-row="original"] [data-plan-field="note"]')).toContainText('横浜会場');await page.locator('#sheet-split').click();await expect(page.locator('[data-sheet-row="original"] [data-plan-field="note14"]')).toHaveValue('横浜会場');
+ await page.locator('nav [data-page="calendar"]').click();await expect(page.locator('.sheet-timeline')).toBeVisible();await expect(page.locator('.sheet-timeline thead')).toContainText('科目');
+ await page.locator('[data-marker-plan="original"][data-marker-date="2027-01-17"]').click();await page.locator('#modal [name="exam"]').check();await page.locator('#modal [name="result"]').check();await page.locator('#modal-form .primary').click();await expect(page.locator('[data-marker-plan="original"][data-marker-date="2027-01-17"]')).toContainText('試験日');await expect(page.locator('[data-marker-plan="original"][data-marker-date="2027-01-17"]')).toContainText('発表日');
+ await page.locator('#sheet-pdf').click();await expect.poll(()=>page.evaluate(()=>window.testPrint||'')).toContain('公開備考1');expect(await page.evaluate(()=>window.testPrint)).not.toContain('非公開メモ');
+ await page.locator('#sheet-to-input').click();await page.locator('#modal-form .primary').click();await page.locator('#input-clear').click();await page.locator('#modal-form .primary').click();await expect(page.locator('#input-count')).toContainText('合計 0 件 / カレンダー 5 件');
+ await page.locator('nav [data-page="calendar2"]').click();await page.locator('#sheet-restore-history').click();await page.locator('#sheet-history-choice').selectOption('0');await page.locator('#modal-form .primary').click();await expect(page.locator('[data-sheet-row]')).toHaveCount(5);
+ await page.locator('#student-select').selectOption('other');await expect(page.locator('[data-sheet-row]')).toHaveCount(0);await page.locator('#student-select').selectOption('old');await expect(page.locator('[data-sheet-row]')).toHaveCount(5);
+ await page.screenshot({path:'docs/calendar2.png',fullPage:true});expect(errors).toEqual([]);
+});
+
+test('ランク確定、手動順序、列表示、反映のキャンセルで予定を保護する',async({page})=>{
+ const cat=require('../../data/catalog.json');const r=cat.rankings.find(r=>r.department);const initial={version:1,year:2027,active:'s',students:[{id:'s',name:'順位テスト',plans:[{id:'a',university:r.university,faculty:r.faculty,department:r.department,exam:'2/5',rank:'',priority:'2'},{id:'b',university:'手入力大学',faculty:'工',exam:'2/3',rank:'手動ランク',priority:'1'}],history:[]}]};
+ await page.addInitScript({content:`const cat=${JSON.stringify(cat)};let saved=${JSON.stringify(initial)};window.desktop={catalog:async()=>cat,load:async()=>saved,save:async s=>{saved=structuredClone(s);window.testSaved=saved;return true},pdf:async()=>true,print:async()=>true,backup:async()=>true,restore:async()=>null};`});
+ await page.goto(url);await page.locator('nav [data-page="calendar2"]').click();await page.locator('#sheet-ranks').click();await expect(page.locator('[data-rank-plan]')).toHaveCount(1);await page.locator('#modal-form .primary').click();await expect(page.locator('[data-sheet-row="a"] [data-plan-field="rank"]')).toHaveValue(r.rank);await expect(page.locator('[data-sheet-row="b"] [data-plan-field="rank"]')).toHaveValue('手動ランク');
+ await page.locator('#sheet-sort-key').selectOption('priority');await page.locator('#sheet-sort').click();await expect(page.locator('[data-sheet-row]').first()).toHaveAttribute('data-sheet-row','b');
+ await page.locator('#sheet-order').click();await page.locator('#sheet-order-value').fill('1,1');await page.locator('#modal-form .primary').click();await expect(page.locator('#modal')).toBeVisible();await page.locator('#sheet-order-value').fill('2,1');await page.locator('#modal-form .primary').click();await expect(page.locator('[data-sheet-row]').first()).toHaveAttribute('data-sheet-row','a');
+ await page.locator('nav [data-page="calendar"]').click();await page.locator('#sheet-columns').click();await page.locator('[name="visible-department"]').uncheck();await page.locator('#modal-form .primary').click();await expect(page.locator('[data-plan-field="department"]')).toHaveCount(0);
+ await page.locator('#sheet-to-input').click();await page.locator('#modal-form [data-close]').click();await expect(page.locator('h1')).toHaveText('カレンダー');await expect(page.locator('[data-sheet-row]')).toHaveCount(2);
+ await page.locator('nav [data-page="input1"]').click();await page.locator('#input-clear').click();await page.locator('#modal-form .primary').click();await page.locator('#input-apply').click();await page.locator('#modal-form [data-close]').click();
+ await page.locator('nav [data-page="calendar2"]').click();await expect(page.locator('[data-sheet-row]')).toHaveCount(2);await page.locator('.sheet-new-university').first().fill('空行から追加');await page.locator('.sheet-new-university').first().dispatchEvent('change');await expect(page.locator('[data-sheet-row]')).toHaveCount(3);await expect(page.locator('[data-sheet-row]').last().locator('[data-plan-field=university]')).toHaveValue('空行から追加');
 });
